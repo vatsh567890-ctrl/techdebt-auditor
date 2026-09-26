@@ -273,7 +273,55 @@ st.markdown(
         border: 1px solid rgba(255,255,255,0.12);
         background: rgba(255,255,255,0.06);
         font-size: 0.85rem;
-    }
+    }/* Thinking/processing animation */
+.thinking-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    padding: 2rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 1rem 0;
+}
+
+.thinking-icon {
+    font-size: 2.5rem;
+    animation: brainPulse 1.2s ease-in-out infinite;
+}
+
+.thinking-icon-git {
+    font-size: 2.5rem;
+    animation: gitSpin 2s linear infinite;
+}
+
+@keyframes brainPulse {
+    0%, 100% { transform: scale(1); opacity: 0.7; }
+    50% { transform: scale(1.25); opacity: 1; filter: drop-shadow(0 0 10px #a78bfa); }
+}
+
+@keyframes gitSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.thinking-text {
+    color: #b8c1ec;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.thinking-dots::after {
+    content: '';
+    animation: dotsLoop 1.4s steps(4, end) infinite;
+}
+@keyframes dotsLoop {
+    0% { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+}
     </style>
     """,
     unsafe_allow_html=True,
@@ -337,7 +385,17 @@ if run_button and not repo_url:
     st.warning("Paste a GitHub repo URL first.")
 
 if run_button and repo_url:
-    with st.spinner("Cloning repo and scanning files… this can take a minute for larger repos"):
+    thinking_placeholder = st.empty()
+    thinking_placeholder.markdown(
+        "<div class='thinking-container'>"
+        "<span class='thinking-icon'>🧠</span>"
+        "<span class='thinking-text'>Analyzing repository<span class='thinking-dots'></span></span>"
+        "<span class='thinking-icon-git'>🔀</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    with st.spinner(""):
         try:
             local_path = clone_repo(repo_url)
             backlog = build_backlog(local_path)
@@ -346,6 +404,8 @@ if run_button and repo_url:
         except Exception as e:
             st.error(f"Something went wrong: {e}")
             backlog = []
+
+    thinking_placeholder.empty()  # clears the thinking animation once done
 
     if not backlog:
         st.warning("No code files found, or the repo failed to clone. Double-check the URL.")
