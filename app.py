@@ -46,9 +46,9 @@ st.markdown(
 
     /* ── Layout container ───────────────────────────────────────────────────── */
     .block-container {
-        padding-top: 0 !important;
+        padding-top: 2.5rem !important;   /* fix: was 0, caused title clip */
         padding-bottom: 2rem;
-        max-width: 860px !important;
+        max-width: 1100px !important;     /* wider to let the 3-col grid breathe */
         margin-left: auto !important;
         margin-right: auto !important;
     }
@@ -188,23 +188,81 @@ st.markdown(
     .mc-low    { background: rgba( 22, 163, 74,   0.18); border: 1px solid rgba( 22, 163, 74,   0.35); color: #86efac; }
     .mc-total  { background: rgba( 45, 212, 191,  0.12); border: 1px solid rgba( 45, 212, 191,  0.30); color: #5eead4; }
 
-    /* ── Backlog card fade-in animation ─────────────────────────────────────── */
+    /* ── Responsive backlog grid ────────────────────────────────────────────── */
+    .backlog-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+        margin: 1rem 0 1.5rem;
+    }
+    @media (max-width: 900px) {
+        .backlog-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 560px) {
+        .backlog-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Individual grid card */
+    .bl-card {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 12px;
+        padding: 1rem 1.1rem 0.9rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+        animation: fadeInUp 0.35s ease both;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .bl-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+    }
+    .bl-card.sev-high   { border-left: 4px solid #ff4757; }
+    .bl-card.sev-medium { border-left: 4px solid #ffa502; }
+    .bl-card.sev-low    { border-left: 4px solid #2ed573; }
+
+    .bl-card-file {
+        font-size: 0.78rem;
+        font-family: 'SFMono-Regular', Consolas, monospace;
+        color: #a5b4fc;
+        word-break: break-all;
+        line-height: 1.35;
+    }
+    .bl-card-score {
+        font-size: 1.6rem;
+        font-weight: 800;
+        line-height: 1;
+        color: #f1f5f9;
+    }
+    .bl-card-meta {
+        font-size: 0.75rem;
+        color: rgba(255,255,255,0.5);
+        margin-top: 0.1rem;
+    }
+    .bl-card-effort {
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #94a3b8;
+        margin-top: auto;
+        padding-top: 0.4rem;
+        border-top: 1px solid rgba(255,255,255,0.07);
+    }
+
+    /* Stagger fade-in on grid cards */
     @keyframes fadeInUp {
         from { opacity: 0; transform: translateY(14px); }
         to   { opacity: 1; transform: translateY(0);    }
     }
-    .backlog-card {
-        animation: fadeInUp 0.35s ease both;
-    }
-    /* Stagger delay via nth-child so cards cascade rather than all popping at once */
-    .backlog-card:nth-child(1)  { animation-delay: 0.00s; }
-    .backlog-card:nth-child(2)  { animation-delay: 0.05s; }
-    .backlog-card:nth-child(3)  { animation-delay: 0.10s; }
-    .backlog-card:nth-child(4)  { animation-delay: 0.15s; }
-    .backlog-card:nth-child(5)  { animation-delay: 0.20s; }
-    .backlog-card:nth-child(n+6){ animation-delay: 0.25s; }
+    .bl-card:nth-child(1)  { animation-delay: 0.00s; }
+    .bl-card:nth-child(2)  { animation-delay: 0.05s; }
+    .bl-card:nth-child(3)  { animation-delay: 0.10s; }
+    .bl-card:nth-child(4)  { animation-delay: 0.15s; }
+    .bl-card:nth-child(5)  { animation-delay: 0.20s; }
+    .bl-card:nth-child(6)  { animation-delay: 0.25s; }
+    .bl-card:nth-child(n+7){ animation-delay: 0.30s; }
 
-    /* Left-border severity stripe on expander rows */
+    /* Left-border severity stripe on detail expander rows */
     [data-testid="stExpander"]:has(.badge-high)   { border-left: 4px solid #ff4757; border-radius: 6px; margin-bottom: 4px; }
     [data-testid="stExpander"]:has(.badge-medium) { border-left: 4px solid #ffa502; border-radius: 6px; margin-bottom: 4px; }
     [data-testid="stExpander"]:has(.badge-low)    { border-left: 4px solid #2ed573; border-radius: 6px; margin-bottom: 4px; }
@@ -255,8 +313,12 @@ st.markdown(
 )
 
 # ── (2) Glass-card input area ──────────────────────────────────────────────────
-st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
-st.markdown("<div class='glass-card-label'>GitHub repo URL</div>", unsafe_allow_html=True)
+# Bug fix: combine opening tag + label into ONE st.markdown call so Streamlit
+# doesn't insert an empty container div between the glass-card border and label.
+st.markdown(
+    "<div class='glass-card'><div class='glass-card-label'>GitHub repo URL</div>",
+    unsafe_allow_html=True,
+)
 col_url, col_btn = st.columns([5, 1])
 with col_url:
     repo_url = st.text_input(
@@ -443,10 +505,49 @@ if run_button and repo_url:
         filtered = sorted(filtered, key=lambda b: b["file"])
     # default is already sorted highest-first from build_backlog
 
-    st.caption(f"Showing {min(len(filtered), 50)} of {len(filtered)} files")
+    page_count = min(len(filtered), 50)
+    st.caption(f"Showing {page_count} of {len(filtered)} files")
 
-    # ── (4) Backlog items with fade-in wrapper + (3) badge <span> headers ──────
-    for item in filtered[:50]:
+    # ── Responsive 3-col grid — pure HTML summary cards ───────────────────────
+    # Each card shows: badge, file path, score, effort, LOC. No interactivity
+    # here — all interactive detail (fixes, AI review) stays in expanders below.
+    grid_parts = []
+    for item in filtered[:page_count]:
+        score = item["risk_score"]
+        if score >= 70:
+            badge_html = "<span class='badge-high'>🔴 HIGH</span>"
+            sev_cls    = "sev-high"
+        elif score >= 40:
+            badge_html = "<span class='badge-medium'>🟠 MEDIUM</span>"
+            sev_cls    = "sev-medium"
+        else:
+            badge_html = "<span class='badge-low'>🟢 LOW</span>"
+            sev_cls    = "sev-low"
+
+        # Escape angle-brackets in file paths (shouldn't exist but be safe)
+        safe_file = item["file"].replace("<", "&lt;").replace(">", "&gt;")
+        grid_parts.append(
+            f"<div class='bl-card {sev_cls}'>"
+            f"  <div>{badge_html}</div>"
+            f"  <div class='bl-card-file'>{safe_file}</div>"
+            f"  <div class='bl-card-score'>{score}<span style='font-size:0.9rem;opacity:.5;font-weight:400'>/100</span></div>"
+            f"  <div class='bl-card-meta'>📏 {item['line_count']:,} lines &nbsp;·&nbsp; 🕐 {item['staleness_days']}d ago</div>"
+            f"  <div class='bl-card-effort'>⏱ {item['effort_estimate']}</div>"
+            f"</div>"
+        )
+    st.markdown(
+        "<div class='backlog-grid'>" + "".join(grid_parts) + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Detail expanders (one per file, collapsed by default) ─────────────────
+    st.markdown(
+        "<div style='font-size:0.82rem;opacity:0.5;margin:0.25rem 0 0.75rem'>"
+        "▼ Click any file below for detailed findings, fixes, and AI review"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    for item in filtered[:page_count]:
         score = item["risk_score"]
         if score >= 70:
             badge_html = "<span class='badge-high'>🔴 HIGH</span>"
@@ -458,10 +559,8 @@ if run_button and repo_url:
             badge_html = "<span class='badge-low'>🟢 LOW</span>"
             badge_txt  = "🟢 LOW"
 
-        # Fade-in wrapper — wraps the entire expander so the animation applies to the card
-        st.markdown("<div class='backlog-card'>", unsafe_allow_html=True)
         with st.expander(f"{badge_txt}  ·  {item['file']}   (score: {score})"):
-            # (3) Styled badge span rendered inside body where HTML is supported
+            # Styled badge span + file path inside body (HTML works here)
             st.markdown(
                 f"{badge_html}&ensp;"
                 f"<code style='font-size:.9em'>{item['file']}</code>"
@@ -546,8 +645,6 @@ if run_button and repo_url:
 
             explanation = call_ai_for_explanation("", item)
             st.info(f"💡 {explanation}")
-
-        st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Footer ─────────────────────────────────────────────────────────────────────
 st.markdown(
