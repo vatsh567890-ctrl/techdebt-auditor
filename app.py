@@ -20,6 +20,7 @@ from analyzer import (
 )
 from github_issues import create_issues
 
+# set_page_config MUST be the first Streamlit call
 st.set_page_config(
     page_title="Tech Debt & Security Auditor",
     page_icon="🔍",
@@ -27,11 +28,23 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ── Global styles ──────────────────────────────────────────────────────────────
+# ── All styles in one block ────────────────────────────────────────────────────
 st.markdown(
     """
     <style>
-    /* ── 1. Max-width container — centres content, kills edge-to-edge stretch */
+    /* ── Animated gradient page background ─────────────────────────────────── */
+    .stApp {
+        background: linear-gradient(-45deg, #0f0c29, #302b63, #24243e, #0f0c29);
+        background-size: 400% 400%;
+        animation: gradientShift 15s ease infinite;
+    }
+    @keyframes gradientShift {
+        0%   { background-position: 0%   50%; }
+        50%  { background-position: 100% 50%; }
+        100% { background-position: 0%   50%; }
+    }
+
+    /* ── Layout container ───────────────────────────────────────────────────── */
     .block-container {
         padding-top: 0 !important;
         padding-bottom: 2rem;
@@ -40,16 +53,44 @@ st.markdown(
         margin-right: auto !important;
     }
 
-    /* ── 2. Input+button card ───────────────────────────────────────────────── */
-    .input-card {
-        background: var(--secondary-background-color, #1e293b);
-        border: 1px solid rgba(255,255,255,0.09);
-        border-radius: 12px;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.35);
-        padding: 1.25rem 1.5rem 1rem;
+    /* ── Flashy title / subtitle ────────────────────────────────────────────── */
+    p.flashy-title {
+        font-size: 3rem;
+        font-weight: 800;
+        background: linear-gradient(90deg, #00f2fe, #4facfe, #a78bfa, #00f2fe);
+        background-size: 300% auto;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: shimmer 4s linear infinite;
+        text-align: center;
+        margin: 1.5rem 0 0;
+        line-height: 1.15;
+    }
+    @keyframes shimmer {
+        to { background-position: 300% center; }
+    }
+    p.flashy-subtitle {
+        text-align: center;
+        color: #b8c1ec;
+        font-size: 1.05rem;
+        margin-top: 0.4rem;
+        margin-bottom: 2rem;
+        line-height: 1.55;
+    }
+
+    /* ── Glassmorphic input card ────────────────────────────────────────────── */
+    .glass-card {
+        background: rgba(255, 255, 255, 0.06);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 16px;
+        padding: 1.5rem 1.5rem 1rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         margin-bottom: 1.5rem;
     }
-    .input-card-label {
+    .glass-card-label {
         font-size: 0.78rem;
         font-weight: 600;
         text-transform: uppercase;
@@ -58,10 +99,75 @@ st.markdown(
         margin-bottom: 0.4rem;
     }
 
-    /* ── 3. Metric cards — generic fallback (Total files card) ─────────────── */
+    /* ── Glowing button ─────────────────────────────────────────────────────── */
+    .stButton > button {
+        background: linear-gradient(90deg, #4facfe, #00f2fe) !important;
+        color: #0f0c29 !important;
+        font-weight: 700 !important;
+        border: none !important;
+        border-radius: 10px !important;
+        padding: 0.6rem 1.5rem !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 0 15px rgba(79, 172, 254, 0.4) !important;
+    }
+    .stButton > button:hover {
+        transform: translateY(-2px) scale(1.03) !important;
+        box-shadow: 0 0 25px rgba(79, 172, 254, 0.8) !important;
+    }
+
+    /* ── Severity badge spans ───────────────────────────────────────────────── */
+    span.badge-high {
+        display: inline-block;
+        background: rgba(255, 71, 87, 0.15);
+        color: #ff4757;
+        border: 1px solid #ff4757;
+        padding: 3px 11px;
+        border-radius: 20px;
+        font-weight: 700;
+        font-size: 0.82rem;
+        animation: pulseRed 1.5s infinite;
+        vertical-align: middle;
+    }
+    @keyframes pulseRed {
+        0%, 100% { box-shadow: 0 0 5px  rgba(255, 71, 87, 0.5); }
+        50%       { box-shadow: 0 0 18px rgba(255, 71, 87, 0.9); }
+    }
+    span.badge-medium {
+        display: inline-block;
+        background: rgba(255, 165, 2, 0.15);
+        color: #ffa502;
+        border: 1px solid #ffa502;
+        padding: 3px 11px;
+        border-radius: 20px;
+        font-weight: 700;
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+    span.badge-low {
+        display: inline-block;
+        background: rgba(46, 213, 115, 0.15);
+        color: #2ed573;
+        border: 1px solid #2ed573;
+        padding: 3px 11px;
+        border-radius: 20px;
+        font-weight: 700;
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+
+    /* ── Metric cards ───────────────────────────────────────────────────────── */
+    div[data-testid="stMetric"] {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        padding: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        transition: transform 0.2s ease;
+    }
+    div[data-testid="stMetric"]:hover { transform: translateY(-4px); }
+
     [data-testid="metric-container"] {
-        background: var(--secondary-background-color, #1e293b);
-        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 10px;
         padding: 1rem 1.25rem;
     }
@@ -71,56 +177,43 @@ st.markdown(
         letter-spacing: 0.05em;
         opacity: 0.6;
     }
-
-    /* ── 3b. Coloured severity metric cards ─────────────────────────────────── */
-    .metric-card {
-        border-radius: 10px;
-        padding: 1rem 1.25rem;
-        height: 100%;
-    }
+    .metric-card { border-radius: 10px; padding: 1rem 1.25rem; height: 100%; }
     .metric-card .mc-label {
-        font-size: 0.72rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        opacity: 0.75;
-        margin-bottom: 0.3rem;
+        font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.07em; opacity: 0.75; margin-bottom: 0.3rem;
     }
-    .metric-card .mc-value {
-        font-size: 2rem;
-        font-weight: 800;
-        line-height: 1.1;
-    }
+    .metric-card .mc-value { font-size: 2rem; font-weight: 800; line-height: 1.1; }
     .mc-high   { background: rgba(220, 38,  38,  0.18); border: 1px solid rgba(220, 38,  38,  0.35); color: #fca5a5; }
-    .mc-medium { background: rgba(217, 119, 6,   0.18); border: 1px solid rgba(217, 119, 6,   0.35); color: #fcd34d; }
-    .mc-low    { background: rgba( 22, 163, 74,  0.18); border: 1px solid rgba( 22, 163, 74,  0.35); color: #86efac; }
-    .mc-total  { background: rgba( 45, 212, 191, 0.12); border: 1px solid rgba( 45, 212, 191, 0.30); color: #5eead4; }
+    .mc-medium { background: rgba(217, 119,  6,   0.18); border: 1px solid rgba(217, 119,  6,   0.35); color: #fcd34d; }
+    .mc-low    { background: rgba( 22, 163, 74,   0.18); border: 1px solid rgba( 22, 163, 74,   0.35); color: #86efac; }
+    .mc-total  { background: rgba( 45, 212, 191,  0.12); border: 1px solid rgba( 45, 212, 191,  0.30); color: #5eead4; }
 
-    /* ── 4. Severity badge pills ────────────────────────────────────────────── */
-    .badge {
-        display: inline-block;
-        padding: 0.18em 0.65em;
-        border-radius: 999px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        vertical-align: middle;
+    /* ── Backlog card fade-in animation ─────────────────────────────────────── */
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(14px); }
+        to   { opacity: 1; transform: translateY(0);    }
     }
-    .badge-high   { background: #dc2626; color: #fff; }
-    .badge-medium { background: #d97706; color: #fff; }
-    .badge-low    { background: #16a34a; color: #fff; }
+    .backlog-card {
+        animation: fadeInUp 0.35s ease both;
+    }
+    /* Stagger delay via nth-child so cards cascade rather than all popping at once */
+    .backlog-card:nth-child(1)  { animation-delay: 0.00s; }
+    .backlog-card:nth-child(2)  { animation-delay: 0.05s; }
+    .backlog-card:nth-child(3)  { animation-delay: 0.10s; }
+    .backlog-card:nth-child(4)  { animation-delay: 0.15s; }
+    .backlog-card:nth-child(5)  { animation-delay: 0.20s; }
+    .backlog-card:nth-child(n+6){ animation-delay: 0.25s; }
 
     /* Left-border severity stripe on expander rows */
-    [data-testid="stExpander"]:has(.badge-high)   { border-left: 4px solid #dc2626; border-radius: 6px; margin-bottom: 4px; }
-    [data-testid="stExpander"]:has(.badge-medium) { border-left: 4px solid #d97706; border-radius: 6px; margin-bottom: 4px; }
-    [data-testid="stExpander"]:has(.badge-low)    { border-left: 4px solid #16a34a; border-radius: 6px; margin-bottom: 4px; }
+    [data-testid="stExpander"]:has(.badge-high)   { border-left: 4px solid #ff4757; border-radius: 6px; margin-bottom: 4px; }
+    [data-testid="stExpander"]:has(.badge-medium) { border-left: 4px solid #ffa502; border-radius: 6px; margin-bottom: 4px; }
+    [data-testid="stExpander"]:has(.badge-low)    { border-left: 4px solid #2ed573; border-radius: 6px; margin-bottom: 4px; }
 
-    /* ── 5. Expander body / download button ─────────────────────────────────── */
+    /* ── Expander body / download button ────────────────────────────────────── */
     [data-testid="stExpander"] > div:last-child { padding: 0.75rem 1rem; }
-
     [data-testid="stDownloadButton"] button {
         border: 1px solid rgba(255,255,255,0.12);
-        background: var(--secondary-background-color, #1e293b);
+        background: rgba(255,255,255,0.06);
         font-size: 0.85rem;
     }
     </style>
@@ -128,7 +221,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── Sidebar: watsonx credentials ───────────────────────────────────────────────
+# ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 🤖 watsonx.ai — AI Explanations")
     st.caption(
@@ -148,31 +241,22 @@ with st.sidebar:
     else:
         st.info("Enter credentials above to enable AI explanations.", icon="ℹ️")
 
-# ── Header banner ──────────────────────────────────────────────────────────────
+# ── (1) Flashy title + subtitle ───────────────────────────────────────────────
 st.markdown(
-    """
-    <div style="
-        background: linear-gradient(135deg, #134e4a 0%, #0f766e 60%, #2dd4bf 100%);
-        border-radius: 14px;
-        padding: 2rem 2.25rem 1.75rem;
-        margin-bottom: 1.75rem;
-        margin-top: 1.25rem;
-    ">
-      <div style="font-size:1.75rem;font-weight:800;color:#fff;letter-spacing:-0.02em;line-height:1.2;">
-        🔍 Tech Debt &amp; Security Auditor
-      </div>
-      <div style="margin-top:0.5rem;font-size:0.95rem;color:rgba(255,255,255,0.78);line-height:1.55;max-width:560px;">
-        Point this at a GitHub repo and get a ranked <strong style="color:#fff;">fix-this-first</strong>
-        backlog — scored on complexity, staleness, test coverage, and risky patterns.
-      </div>
-    </div>
-    """,
+    "<p class='flashy-title'>🔍 Tech Debt &amp; Security Auditor</p>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "<p class='flashy-subtitle'>"
+    "Point this at a GitHub repo and get a ranked <strong>fix-this-first</strong> backlog "
+    "— scored on complexity, staleness, test coverage, and risky patterns."
+    "</p>",
     unsafe_allow_html=True,
 )
 
-# ── Input card ─────────────────────────────────────────────────────────────────
-st.markdown("<div class='input-card'>", unsafe_allow_html=True)
-st.markdown("<div class='input-card-label'>GitHub repo URL</div>", unsafe_allow_html=True)
+# ── (2) Glass-card input area ──────────────────────────────────────────────────
+st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+st.markdown("<div class='glass-card-label'>GitHub repo URL</div>", unsafe_allow_html=True)
 col_url, col_btn = st.columns([5, 1])
 with col_url:
     repo_url = st.text_input(
@@ -244,10 +328,6 @@ if run_button and repo_url:
 
     # ── Risk distribution chart ────────────────────────────────────────────────
     st.markdown("#### Risk distribution")
-    chart_data = {
-        "Risk level": ["High (≥70)", "Medium (40–69)", "Low (<40)"],
-        "Files":      [len(high_risk), len(medium_risk), len(low_risk)],
-    }
     bar_cols = st.columns([2, 1])
     with bar_cols[0]:
         st.bar_chart(
@@ -280,7 +360,6 @@ if run_button and repo_url:
         top5 = backlog[:5]
         with st.spinner(f"Creating {len(top5)} issue(s) on GitHub…"):
             results = create_issues(repo_url, gh_token, top5)
-
         for r in results:
             if r["status"] == "created":
                 st.success(f"✅ [{r['file']}]({r['issue_url']}) — issue created")
@@ -310,7 +389,6 @@ if run_button and repo_url:
         )
 
     # ── Filter controls ────────────────────────────────────────────────────────
-    # Derive folder and extension option lists from the full backlog
     def _top_folder(file_path: str) -> str:
         parts = _Path(file_path).parts
         return parts[0] if len(parts) > 1 else "(root)"
@@ -367,7 +445,7 @@ if run_button and repo_url:
 
     st.caption(f"Showing {min(len(filtered), 50)} of {len(filtered)} files")
 
-    # ── Backlog items ──────────────────────────────────────────────────────────
+    # ── (4) Backlog items with fade-in wrapper + (3) badge <span> headers ──────
     for item in filtered[:50]:
         score = item["risk_score"]
         if score >= 70:
@@ -380,7 +458,18 @@ if run_button and repo_url:
             badge_html = "<span class='badge-low'>🟢 LOW</span>"
             badge_txt  = "🟢 LOW"
 
+        # Fade-in wrapper — wraps the entire expander so the animation applies to the card
+        st.markdown("<div class='backlog-card'>", unsafe_allow_html=True)
         with st.expander(f"{badge_txt}  ·  {item['file']}   (score: {score})"):
+            # (3) Styled badge span rendered inside body where HTML is supported
+            st.markdown(
+                f"{badge_html}&ensp;"
+                f"<code style='font-size:.9em'>{item['file']}</code>"
+                f"&ensp;<span style='opacity:.45;font-size:.82em'>score {score} / 100</span>",
+                unsafe_allow_html=True,
+            )
+            st.markdown("")
+
             info_a, info_b = st.columns(2)
             with info_a:
                 st.markdown(f"**Effort estimate:** {item['effort_estimate']}")
@@ -457,6 +546,8 @@ if run_button and repo_url:
 
             explanation = call_ai_for_explanation("", item)
             st.info(f"💡 {explanation}")
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Footer ─────────────────────────────────────────────────────────────────────
 st.markdown(
