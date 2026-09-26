@@ -1,0 +1,20 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Streamlit cache
+.streamlit/cache/
+
+# Temp clone directories created at runtime
+repo_*/
+zip_repo_*/
+
+# OS
+.DS_Store
+Thumbs.db
