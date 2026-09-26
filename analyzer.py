@@ -45,6 +45,62 @@ RISKY_PATTERNS = [
 COMPILED_PATTERNS = [(re.compile(p), msg) for p, msg in RISKY_PATTERNS]
 
 # ---------------------------------------------------------------------------
+# STEP 2a: Recommended fixes, keyed on the exact finding message above.
+#   get_fixes_for(findings) returns a list of (finding, fix) pairs so the
+#   UI can render them without re-running any regex.
+# ---------------------------------------------------------------------------
+RISKY_FIXES: dict[str, str] = {
+    "Uses eval() -- can execute arbitrary code, common security risk": (
+        "Replace `eval()` with `ast.literal_eval()` for parsing plain data structures "
+        "(strings, numbers, dicts, lists). If you need to evaluate expressions, use a "
+        "dedicated parser library (e.g. `simpleeval`) rather than executing arbitrary code."
+    ),
+    "Uses exec() -- can execute arbitrary code": (
+        "Remove `exec()` entirely if possible. If dynamic code execution is genuinely "
+        "required, restrict the globals/locals namespaces passed to `exec()` and validate "
+        "all inputs before they reach it. Consider restructuring with a plugin/strategy "
+        "pattern instead."
+    ),
+    "Uses os.system() -- shell injection risk if input isn't sanitized": (
+        "Replace `os.system()` with `subprocess.run([...], check=True)` using a list of "
+        "arguments instead of a shell string. This bypasses the shell entirely and "
+        "eliminates injection risk. Never concatenate user input into a shell command."
+    ),
+    "Possible hardcoded credential/secret": (
+        "Move secrets to environment variables (`os.environ['MY_KEY']`) or a secrets "
+        "manager (AWS Secrets Manager, HashiCorp Vault, IBM Secrets Manager). "
+        "Use `python-dotenv` locally with a `.env` file that is listed in `.gitignore`. "
+        "Rotate the exposed credential immediately if it has already been committed."
+    ),
+    "Possible SQL injection (string-concatenated query)": (
+        "Never build SQL by string concatenation. Use parameterised queries: "
+        "`cursor.execute('SELECT * FROM t WHERE id = %s', (user_id,))`. "
+        "For ORMs (SQLAlchemy, Django ORM) use the ORM's query API instead of `.execute()` "
+        "with raw strings."
+    ),
+    "Uses pickle.loads() -- unsafe deserialization risk": (
+        "Replace `pickle` with a safe serialisation format: `json` for plain data, "
+        "`msgpack` or `protobuf` for binary. If pickle is unavoidable (e.g. ML model files), "
+        "verify the source with a cryptographic signature before deserialising and never "
+        "unpickle data received over a network."
+    ),
+    "Contains TODO/FIXME/HACK marker -- known unfinished/risky area": (
+        "Convert each TODO/FIXME into a tracked issue in your issue tracker (GitHub Issues, "
+        "Jira, etc.) with an owner and a milestone. Delete the marker once the issue is "
+        "filed so the codebase doesn't accumulate stale annotations."
+    ),
+}
+
+
+def get_fixes_for(findings: list[str]) -> list[tuple[str, str]]:
+    """
+    Return ``[(finding_message, fix_text), ...]`` for every finding that has
+    a known recommended fix.  Findings with no fix entry are silently skipped.
+    """
+    return [(f, RISKY_FIXES[f]) for f in findings if f in RISKY_FIXES]
+
+
+# ---------------------------------------------------------------------------
 # STEP 2b: Compliance-specific extra patterns
 #   Each entry: (regex, human message, set-of-applicable-modes)
 #   "modes" is a frozenset of profile names that should run this check.
@@ -418,6 +474,130 @@ def call_ai_for_explanation(file_snippet: str, metrics: dict) -> str:
     except Exception as exc:  # never crash the whole app for a missing explanation
         reasons = metrics.get("risky_findings") or ["general complexity/staleness risk"]
         return " | ".join(reasons) + f"  _(AI unavailable: {exc})_"
+
+
+# Max lines of source sent to the AI — keeps prompts short and cost-predictable
+_SNIPPET_LINES = 120
+
+
+def call_ai_for_file_review(repo_path: str, metrics: dict) -> dict:
+    """
+    Returns a detailed AI review of one flagged file as a dict::
+
+        {
+            "review":  str,   # 2-3 sentence contextual risk explanation
+            "fix":     str,   # concrete suggested fix, ideally a code snippet
+            "lang":    str,   # language hint for the code block (e.g. "python")
+            "error":   str | None,
+        }
+
+    ``repo_path`` is the local clone / extracted path; ``metrics`` is the item
+    dict produced by ``scan_file``.  Falls back gracefully when:
+      - No watsonx credentials are configured (returns rule-based text, no code)
+      - The API call fails for any reason (returns fallback + error message)
+    """
+    findings = metrics.get("risky_findings") or []
+    compliance = metrics.get("compliance_findings") or []
+    all_findings = findings + compliance
+
+    # ── Graceful no-credentials fallback ──────────────────────────────────────
+    if not _watsonx_credentials:
+        review = (
+            f"`{metrics['file']}` has a risk score of {metrics.get('risk_score', 'N/A')} / 100. "
+            + (
+                f"Detected issues: {'; '.join(all_findings)}."
+                if all_findings
+                else "Flagged for general complexity and staleness."
+            )
+        )
+        return {
+            "review": review,
+            "fix": "",
+            "lang": "",
+            "error": None,
+        }
+
+    # ── Read source snippet ────────────────────────────────────────────────────
+    import pathlib
+    full_path = os.path.join(repo_path, metrics["file"])
+    snippet = ""
+    lang = pathlib.Path(metrics["file"]).suffix.lstrip(".") or "text"
+    try:
+        with open(full_path, "r", encoding="utf-8", errors="ignore") as fh:
+            lines = fh.readlines()
+        snippet = "".join(lines[:_SNIPPET_LINES])
+        if len(lines) > _SNIPPET_LINES:
+            snippet += f"\n# ... ({len(lines) - _SNIPPET_LINES} more lines not shown)"
+    except Exception:
+        snippet = "# (source unavailable)"
+
+    findings_block = "\n".join(f"  - {f}" for f in all_findings) or "  - general complexity/staleness"
+
+    prompt = (
+        f"You are a senior software engineer performing a security and tech-debt code review.\n\n"
+        f"FILE: {metrics['file']}\n"
+        f"RISK SCORE: {metrics.get('risk_score', 'N/A')} / 100\n"
+        f"DETECTED ISSUES:\n{findings_block}\n\n"
+        f"SOURCE (first {_SNIPPET_LINES} lines):\n"
+        f"```{lang}\n{snippet}\n```\n\n"
+        f"Respond in exactly this format — do not add any other text:\n"
+        f"REVIEW:\n"
+        f"<2-3 sentences explaining the specific risks visible in this code, "
+        f"referencing actual identifiers or patterns you see in the snippet>\n\n"
+        f"FIX:\n"
+        f"```{lang}\n"
+        f"<a short concrete corrected code snippet — replace the risky pattern(s) "
+        f"with the safe equivalent; include only the changed section, not the whole file>\n"
+        f"```"
+    )
+
+    try:
+        from ibm_watsonx_ai import Credentials
+        from ibm_watsonx_ai.foundation_models import ModelInference
+
+        creds = _watsonx_credentials
+        model = ModelInference(
+            model_id="ibm/granite-3-3-8b-instruct",
+            credentials=Credentials(api_key=creds["api_key"], url=creds["url"]),
+            project_id=creds["project_id"],
+            params={"max_new_tokens": 400, "temperature": 0.2},
+        )
+        raw = model.generate_text(prompt).strip()
+
+        # ── Parse REVIEW / FIX sections ───────────────────────────────────────
+        review, fix = "", ""
+        if "REVIEW:" in raw and "FIX:" in raw:
+            review_part = raw.split("REVIEW:", 1)[1].split("FIX:", 1)[0].strip()
+            fix_part    = raw.split("FIX:", 1)[1].strip()
+            review = review_part
+            # Strip surrounding code fence if present
+            if fix_part.startswith("```"):
+                lines_fix = fix_part.splitlines()
+                # drop first fence line and last fence line
+                inner = lines_fix[1:]
+                if inner and inner[-1].strip() == "```":
+                    inner = inner[:-1]
+                fix = "\n".join(inner)
+            else:
+                fix = fix_part
+        else:
+            # Model didn't follow the format — treat whole output as review
+            review = raw
+            fix = ""
+
+        return {"review": review, "fix": fix, "lang": lang, "error": None}
+
+    except Exception as exc:
+        fallback_review = (
+            f"AI review unavailable for `{metrics['file']}`. "
+            + (f"Detected: {'; '.join(all_findings)}." if all_findings else "")
+        )
+        return {
+            "review": fallback_review,
+            "fix": "",
+            "lang": lang,
+            "error": str(exc),
+        }
 
 
 def call_ai_for_repo_summary(backlog: list, profile_label: str = "Default") -> str:

@@ -14,9 +14,9 @@ from pathlib import Path as _Path
 import streamlit as st
 from analyzer import (
     build_backlog, clone_repo, extract_zip,
-    call_ai_for_explanation, call_ai_for_repo_summary,
+    call_ai_for_explanation, call_ai_for_repo_summary, call_ai_for_file_review,
     set_watsonx_credentials, scan_backlog_iter,
-    PROFILES, PROFILE_DEFAULT,
+    PROFILES, PROFILE_DEFAULT, get_fixes_for,
 )
 from github_issues import create_issues
 
@@ -195,6 +195,8 @@ if run_button and repo_url:
         try:
             local_path = clone_repo(repo_url)
             backlog = build_backlog(local_path)
+            # Persist so the render loop can re-read file content for AI reviews
+            st.session_state["_local_path"] = local_path
         except Exception as e:
             st.error(f"Something went wrong: {e}")
             backlog = []
@@ -396,6 +398,62 @@ if run_button and repo_url:
                 st.markdown(
                     "_No specific risky pattern — flagged for general complexity / staleness._"
                 )
+
+            # ── How to Fix This ───────────────────────────────────────────────
+            fixes = get_fixes_for(item["risky_findings"])
+            if fixes:
+                with st.expander("🔧 How to Fix This", expanded=False):
+                    for finding, fix_text in fixes:
+                        short_label = finding.split(" -- ")[0]
+                        st.markdown(
+                            f"<div style='"
+                            f"border-left:3px solid #2dd4bf;"
+                            f"padding:0.55rem 0.85rem;"
+                            f"margin-bottom:0.65rem;"
+                            f"border-radius:0 6px 6px 0;"
+                            f"background:rgba(45,212,191,0.07)'>"
+                            f"<div style='font-size:0.78rem;font-weight:700;"
+                            f"text-transform:uppercase;letter-spacing:0.05em;"
+                            f"opacity:0.7;margin-bottom:0.25rem'>{short_label}</div>"
+                            f"{fix_text}"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+
+            # ── AI Review & Suggested Fix ─────────────────────────────────────
+            repo_path = st.session_state.get("_local_path", "")
+            _review_key = f"_ai_review_{item['file']}"
+            with st.expander("🤖 AI Review & Suggested Fix", expanded=False):
+                if _review_key not in st.session_state:
+                    if repo_path:
+                        with st.spinner("Generating AI review…"):
+                            st.session_state[_review_key] = call_ai_for_file_review(
+                                repo_path, item
+                            )
+                    else:
+                        st.session_state[_review_key] = {
+                            "review": "_Source path unavailable — re-run the scan to enable AI reviews._",
+                            "fix": "", "lang": "", "error": None,
+                        }
+
+                result = st.session_state[_review_key]
+
+                if result.get("error"):
+                    st.warning(f"⚠️ AI call failed: {result['error']}")
+
+                if result.get("review"):
+                    st.markdown("**Review**")
+                    st.markdown(result["review"])
+
+                if result.get("fix"):
+                    st.markdown("**Suggested fix**")
+                    lang = result.get("lang") or "text"
+                    st.code(result["fix"], language=lang)
+                elif not result.get("error"):
+                    st.caption(
+                        "_No AI credentials configured — add your watsonx API key in the "
+                        "sidebar to get a concrete code fix here._"
+                    )
 
             explanation = call_ai_for_explanation("", item)
             st.info(f"💡 {explanation}")
