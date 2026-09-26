@@ -1,0 +1,8 @@
+[theme]
+# Dark teal theme — users can switch to light via ⋮ → Settings
+base                     = "dark"
+primaryColor             = "#2dd4bf"   # teal-400: buttons, links, active widgets
+backgroundColor          = "#0f172a"   # slate-900: main canvas
+secondaryBackgroundColor = "#1e293b"   # slate-800: sidebar, cards, inputs
+textColor                = "#f1f5f9"   # slate-100: body text
+font                     = "sans serif"

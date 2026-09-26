@@ -1,0 +1,2 @@
+streamlit
+ibm-watsonx-ai
